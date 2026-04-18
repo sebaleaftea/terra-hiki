@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-gbf-navy: #11233A;
+  --color-gbf-navy-dark: #0A1526;
+  --color-gbf-gold: #E8C468;
+  --color-gbf-brass: #BDA054;
+  --color-gbf-cyan: #4EA0D8;
+  --color-gbf-red: #C62828;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-gbf-navy-dark);
+    background-image: radial-gradient(circle at top, var(--color-gbf-navy), var(--color-gbf-navy-dark) 80%);
+    background-attachment: fixed;
+    color: #f3f4f6; /* Light gray for good contrast */
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    margin: 0;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--color-gbf-gold);
+    font-weight: bold;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  }
+}
+
