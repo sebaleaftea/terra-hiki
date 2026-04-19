@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Save, Trophy, Target, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Save, Trophy, Target, AlertCircle, CheckCircle2, Loader2, Lock, Unlock, Eye, EyeOff } from 'lucide-react';
+import { API_BASE } from '../config';
 
 interface GWRecord {
   prelimsHonor: number;
@@ -20,19 +21,147 @@ export default function GuildWar() {
     round4Honor: 0,
   });
 
-  const [savedData, setSavedData] = useState<GWRecord | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  
+  // Admin & Config state
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isGWActive, setIsGWActive] = useState(true);
+  const [configLoading, setConfigLoading] = useState(true);
+
+  const currentEdition = "U&F 82"; 
+  const currentElement = "Tierra"; 
 
   // Estas metas ahora provienen de la lógica predictiva / Administrador
-  // U&F Fuego: (Honor Base Crew U&F 80: 36 Billones * Inflación 1.24) * Margen de Seguridad 1.08
   const predictedTotalHonor = 36000000000 * 1.24 * 1.08;
   const adminQuotas = {
-    honor: Math.floor(predictedTotalHonor / 30), // Cuota por Jugador
-    meat: 8000 // Meta de farmeo base de carnes
+    honor: Math.floor(predictedTotalHonor / 30),
+    meat: 8000
   };
 
-  const handleSave = () => {
-    setSavedData({ ...record });
-    alert("¡Datos guardados localmente! Más adelante se enviarán a la base de datos.");
+  // Fetch data on mount
+  useEffect(() => {
+    // Check if admin
+    const userData = localStorage.getItem('terra-user');
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user.role === 'admin') setIsAdmin(true);
+      } catch (e) {
+        console.error("Error parsing user data", e);
+      }
+    }
+
+    fetchConfig();
+    fetchStats();
+  }, []);
+
+  const fetchConfig = async () => {
+    setConfigLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/config`);
+      const data = await res.json();
+      if (res.ok) {
+        setIsGWActive(data.isGWActive);
+      }
+    } catch (err) {
+      console.error("Error fetching config:", err);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  const toggleGWStatus = async () => {
+    const token = localStorage.getItem('terra-token');
+    try {
+      const res = await fetch(`${API_BASE}/admin/config`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ isGWActive: !isGWActive })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIsGWActive(data.config.isGWActive);
+        setMessage({ type: 'success', text: `GW ${data.config.isGWActive ? 'activada' : 'desactivada'} para miembros.` });
+      }
+    } catch (err) {
+      console.error("Error toggling GW status:", err);
+    } finally {
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    }
+  };
+
+  const fetchStats = async () => {
+    setLoading(true);
+    const token = localStorage.getItem('terra-token');
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/gw/stats`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setHistory(data);
+        const current = data.find((r: any) => r.edition === currentEdition);
+        if (current) {
+          setRecord({
+            prelimsHonor: current.prelimsHonor,
+            meatCount: current.meatCount,
+            round1Honor: current.round1Honor,
+            round2Honor: current.round2Honor,
+            round3Honor: current.round3Honor,
+            round4Honor: current.round4Honor,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching stats:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+    const token = localStorage.getItem('terra-token');
+    
+    try {
+      const res = await fetch(`${API_BASE}/gw/save`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          edition: currentEdition,
+          element: currentElement,
+          ...record
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: 'success', text: '¡Progreso guardado en la base de datos!' });
+        fetchStats();
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Error al guardar.' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'No se pudo conectar con el servidor.' });
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    }
   };
 
   const totalHonor = 
@@ -48,9 +177,63 @@ export default function GuildWar() {
   const honorProgress = Math.min(100, (totalHonor / adminQuotas.honor) * 100);
   const meatProgress = Math.min(100, ((record.meatCount || 0) / adminQuotas.meat) * 100);
 
+  const isLocked = !isGWActive && !isAdmin;
+
+  if (configLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-[#E8C468]">
+        <Loader2 className="animate-spin mb-4" size={48} />
+        <p className="font-bold tracking-widest uppercase text-sm">Sincronizando con el servidor...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="animate-fade-in space-y-6 pb-12">
-      <div className="bg-[#1A2534] p-6 rounded-xl border border-[#BDA054]/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-lg">
+    <div className="animate-fade-in space-y-6 pb-12 relative">
+      
+      {/* --- ADMIN TOOLS --- */}
+      {isAdmin && (
+        <div className="bg-[#BDA054]/10 border border-[#BDA054]/30 p-4 rounded-xl flex items-center justify-between shadow-inner">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${isGWActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+              {isGWActive ? <Unlock size={20} /> : <Lock size={20} />}
+            </div>
+            <div>
+              <p className="text-white font-bold text-sm">Panel de Administrador</p>
+              <p className="text-xs text-gray-400">Estado de la GW: <span className={isGWActive ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{isGWActive ? 'ACTIVA' : 'INACTIVA'}</span></p>
+            </div>
+          </div>
+          <button 
+            onClick={toggleGWStatus}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+              isGWActive ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+            } border ${isGWActive ? 'border-red-500/40' : 'border-emerald-500/40'}`}
+          >
+            {isGWActive ? <EyeOff size={16} /> : <Eye size={16} />}
+            {isGWActive ? 'Desactivar para Miembros' : 'Activar para Miembros'}
+          </button>
+        </div>
+      )}
+
+      {/* --- BLOCKING OVERLAY FOR NON-ADMINS --- */}
+      {isLocked && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-md bg-[#0A1526]/40 rounded-2xl pointer-events-auto overflow-hidden">
+          <div className="bg-[#1A2534] border-2 border-[#C62828] p-8 rounded-2xl max-w-md text-center shadow-[0_0_50px_rgba(198,40,40,0.3)] animate-pop-in">
+            <div className="w-20 h-20 bg-[#C62828]/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#C62828]/40">
+              <Lock size={40} className="text-[#C62828] animate-pulse" />
+            </div>
+            <h3 className="text-2xl font-extrabold text-[#E8C468] mb-4 uppercase tracking-tighter">Sección Restringida</h3>
+            <p className="text-gray-300 leading-relaxed font-medium">
+              "Aun falta para que comience esta GW, por favor revisa la sección de Inicio para más información"
+            </p>
+            <div className="mt-8 pt-6 border-t border-[#C62828]/20 text-[10px] text-gray-500 uppercase tracking-[0.2em]">
+              Terra Hiki • Protocolo de Seguridad
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`bg-[#1A2534] p-6 rounded-xl border border-[#BDA054]/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-lg ${isLocked ? 'blur-[2px] pointer-events-none grayscale-[0.5]' : ''}`}>
         <div>
           <h2 className="text-3xl font-bold text-[#E8C468] tracking-wide">Unite and Fight (GW)</h2>
           <p className="text-gray-400 mt-1">Registra tu contribución en la guerra actual.</p>
@@ -61,8 +244,17 @@ export default function GuildWar() {
         </div>
       </div>
 
+      {message.text && (
+        <div className={`p-4 rounded-lg border flex items-center gap-2 animate-fade-in z-[60] relative ${
+          message.type === 'success' ? 'bg-emerald-900/30 border-emerald-500/50 text-emerald-300' : 'bg-red-900/30 border-red-500/50 text-red-300'
+        }`}>
+          {message.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+          {message.text}
+        </div>
+      )}
+
       {/* --- SECCIÓN DE CUOTAS Y METAS --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${isLocked ? 'blur-[2px] pointer-events-none grayscale-[0.5]' : ''}`}>
         {/* Meta de Honor */}
         <div className="bg-[#1A2534]/60 backdrop-blur-md p-6 rounded-xl border border-[#BDA054]/30 relative overflow-hidden">
           <div className="flex justify-between items-center mb-4 relative z-10">
@@ -113,7 +305,7 @@ export default function GuildWar() {
 
 
       {/* CARGAS / RONDAS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${isLocked ? 'blur-[2px] pointer-events-none grayscale-[0.5]' : ''}`}>
         {/* Preliminares */}
         <div className="p-6 rounded-xl bg-[#0A1526]/80 backdrop-blur-sm border border-[#4EA0D8]/30 group hover:border-[#4EA0D8] transition-colors relative overflow-hidden hover:shadow-[0_0_20px_rgba(71,160,37,0.15)]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-[#4EA0D8]/10 to-transparent rounded-bl-full pointer-events-none"></div>
@@ -169,18 +361,19 @@ export default function GuildWar() {
       </div>
 
       {/* Acciones */}
-      <div className="flex justify-end pt-6 border-t border-[#BDA054]/30">
+      <div className={`flex justify-end pt-6 border-t border-[#BDA054]/30 ${isLocked ? 'blur-[2px] pointer-events-none' : ''}`}>
         <button 
           onClick={handleSave}
-          className="flex items-center gap-2 bg-[#4EA0D8] hover:bg-[#E8C468] hover:text-[#1A2534] text-white px-8 py-3 rounded-lg font-bold transition-all shadow-[0_0_15px_rgba(71,160,37,0.4)]"
+          disabled={saving || isLocked}
+          className="flex items-center gap-2 bg-[#4EA0D8] hover:bg-[#E8C468] hover:text-[#1A2534] text-white px-8 py-3 rounded-lg font-bold transition-all shadow-[0_0_15px_rgba(71,160,37,0.4)] disabled:opacity-50"
         >
-          <Save size={20} />
-          Guardar Progreso
+          {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+          {saving ? 'Guardando...' : 'Guardar Progreso'}
         </button>
       </div>
 
       {/* Historial de Guild Wars */}
-      <div className="mt-8 bg-[#0A1526]/90 backdrop-blur-md rounded-xl border border-[#C62828]/50 overflow-hidden shadow-2xl">
+      <div className={`mt-8 bg-[#0A1526]/90 backdrop-blur-md rounded-xl border border-[#C62828]/50 overflow-hidden shadow-2xl ${isLocked ? 'blur-[2px] pointer-events-none' : ''}`}>
         <div className="bg-[#1A2534] p-6 border-b border-[#BDA054]/50 flex justify-between items-center">
           <div>
             <h3 className="text-2xl font-bold text-[#E8C468]">Tus Registros Históricos</h3>
@@ -199,27 +392,35 @@ export default function GuildWar() {
               </tr>
             </thead>
             <tbody className="text-gray-300">
-              <tr className="border-b border-[#C62828]/30 hover:bg-[#1A2534]/60 transition-colors">
-                <td className="p-4 border-r border-[#C62828]/20 font-medium">U&F 81</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-orange-400 font-bold">Tierra</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-right">8,400</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-right text-[#4EA0D8] font-bold">1,250,500,000</td>
-                <td className="p-4 text-center">85,210</td>
-              </tr>
-              <tr className="border-b border-[#C62828]/30 hover:bg-[#1A2534]/60 transition-colors">
-                <td className="p-4 border-r border-[#C62828]/20 font-medium">U&F 80</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-red-500 font-bold">Fuego</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-right">10,200</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-right text-[#4EA0D8] font-bold">1,840,000,000</td>
-                <td className="p-4 text-center text-[#E8C468] font-bold">12,400</td>
-              </tr>
-              <tr className="hover:bg-[#1A2534]/60 transition-colors text-gray-500">
-                <td className="p-4 border-r border-[#C62828]/20 font-medium">U&F 79</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-green-400 font-bold">Viento</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-right">2,100</td>
-                <td className="p-4 border-r border-[#C62828]/20 text-right">450,000,000</td>
-                <td className="p-4 text-center">152,000</td>
-              </tr>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-gray-500">
+                    <Loader2 className="animate-spin inline-block mr-2" /> Cargando historial...
+                  </td>
+                </tr>
+              ) : history.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-gray-500">
+                    No hay registros previos. ¡Empieza a farmear para ver tus estadísticas!
+                  </td>
+                </tr>
+              ) : history.map((row: any) => (
+                <tr key={row._id} className="border-b border-[#C62828]/30 hover:bg-[#1A2534]/60 transition-colors">
+                  <td className="p-4 border-r border-[#C62828]/20 font-medium">{row.edition}</td>
+                  <td className={`p-4 border-r border-[#C62828]/20 font-bold ${
+                    row.element === 'Fuego' ? 'text-red-500' : 
+                    row.element === 'Tierra' ? 'text-orange-400' :
+                    row.element === 'Viento' ? 'text-green-400' : 'text-blue-400'
+                  }`}>{row.element}</td>
+                  <td className="p-4 border-r border-[#C62828]/20 text-right">{row.meatCount?.toLocaleString()}</td>
+                  <td className="p-4 border-r border-[#C62828]/20 text-right text-[#4EA0D8] font-bold">
+                    {(row.prelimsHonor + row.round1Honor + row.round2Honor + row.round3Honor + row.round4Honor).toLocaleString()}
+                  </td>
+                  <td className="p-4 text-center">
+                    <span className="text-xs text-gray-500">En desarrollo</span>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

@@ -1,8 +1,15 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, BookOpen, Swords, LogOut, BarChart } from 'lucide-react';
 
 export default function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    localStorage.removeItem('terra-token');
+    localStorage.removeItem('terra-user');
+    navigate('/login', { replace: true });
+  };
 
   const menuItems = [
     { path: '/home', label: 'Inicio', icon: Home },
@@ -47,8 +54,12 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-[#C62828]/30">
-        <button className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-gray-400 hover:text-red-400 rounded-lg hover:bg-black/20 transition-colors">
-          <LogOut size={18} />
+        <button
+          id="btn-logout"
+          onClick={handleLogout}
+          className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-gray-400 hover:text-red-400 rounded-lg hover:bg-black/20 transition-colors group"
+        >
+          <LogOut size={18} className="group-hover:scale-110 transition-transform" />
           <span>Cerrar Sesión</span>
         </button>
       </div>

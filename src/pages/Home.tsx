@@ -2,6 +2,21 @@ import { useState, useEffect } from 'react';
 import { CalendarDays, Shield, Bell } from 'lucide-react';
 
 export default function Home() {
+  const [userNick, setUserNick] = useState('Gran');
+  
+  useEffect(() => {
+    const userData = localStorage.getItem('terra-user');
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user.gameNick) setUserNick(user.gameNick);
+        else if (user.username) setUserNick(user.username);
+      } catch (e) {
+        console.error("Error parsing user data", e);
+      }
+    }
+  }, []);
+
   // Configuración de la próxima Guild War (Unite and Fight)
   const targetDate = new Date('2026-06-21T19:00:00+09:00'); // Horario JST para inicio de prelims
   
@@ -34,7 +49,7 @@ export default function Home() {
   return (
     <div className="animate-fade-in space-y-8">
       <header>
-        <h2 className="text-3xl font-bold text-white tracking-wide">Bienvenido, Gran</h2>
+        <h2 className="text-3xl font-bold text-white tracking-wide">Bienvenido, {userNick}</h2>
         <p className="text-gray-400 mt-2">Panel general de comando de Terra Hiki.</p>
       </header>
 
