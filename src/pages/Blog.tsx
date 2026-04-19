@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PlusCircle, Image as ImageIcon, X, Loader2, AlertCircle, MessageSquare, Trash2, Tag, ChevronDown, ChevronUp } from 'lucide-react';
+import { PlusCircle, Image as ImageIcon, X, Loader2, AlertCircle, MessageSquare, Trash2, Tag } from 'lucide-react';
 import { API_BASE } from '../config';
 
 interface BlogPost {
